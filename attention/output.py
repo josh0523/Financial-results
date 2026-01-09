@@ -53,7 +53,7 @@ def _status_and_risk(row: AggregatedRow) -> tuple[str, str]:
         return "(未) 未公告 (高風險)", "高風險"
 
 
-def _sort_key(row: AggregatedRow) -> tuple[int, int, str]:
+def _sort_key(row: AggregatedRow) -> tuple[int, date, int, str]:
     # Sort order: High Risk (0) > Uncertain (1) > Low Risk (2)
     if row.is_excluded:
         risk_order = 2  # Low risk - bottom
@@ -62,8 +62,12 @@ def _sort_key(row: AggregatedRow) -> tuple[int, int, str]:
     else:
         risk_order = 0  # High risk - top
     
+    # Sort by announced_date within groups (oldest first = furthest from today)
+    # High risk doesn't have an announced_date, so use date.min
+    sort_date = row.announced_date or date.min
+    
     market_order = {"TSE": 0, "OTC": 1}
-    return (risk_order, market_order.get(row.market, 99), row.code)
+    return (risk_order, sort_date, market_order.get(row.market, 99), row.code)
 
 
 def build_rows(rows: Iterable[AggregatedRow], missing: str) -> list[list[str]]:
