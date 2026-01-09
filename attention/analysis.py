@@ -14,7 +14,7 @@ from .utils import is_warrant
 
 _VOLUME_MULT_RE = re.compile(r"(?:放大|為|之)\s*([0-9]+(?:\.[0-9]+)?)\s*倍")
 _PCT_CHANGE_RE = re.compile(r"漲幅(?:達)?\s*([0-9]+(?:\.[0-9]+)?)%")
-_CLAUSE_1_3_RE = re.compile(r"第(?:一|二|三|1|2|3)款")
+_CLAUSE_1_3_5_RE = re.compile(r"第(?:一|二|三|五|1|2|3|5)款")
 _CLAUSE_10_RE = re.compile(r"第(?:十|10)款")
 _TSE_FIRST_RE = re.compile(r"(第一款|第1款|累積收盤價漲幅)")
 
@@ -44,8 +44,8 @@ def _extract_max(pattern: re.Pattern[str], text: str) -> float | None:
     return max(values) if values else None
 
 
-def _has_clause_1_3(text: str) -> bool:
-    return bool(_CLAUSE_1_3_RE.search(text or ""))
+def _has_clause_1_3_5(text: str) -> bool:
+    return bool(_CLAUSE_1_3_5_RE.search(text or ""))
 
 
 def _has_clause_10(text: str) -> bool:
@@ -93,7 +93,7 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                 "pct_change": _extract_max(_PCT_CHANGE_RE, row.info),
                 "tse_clause1": _tse_first_clause(row.info),
                 "has_clause_10": _has_clause_10(row.info),
-                "has_clause_1_3": _has_clause_1_3(row.info),
+                "has_clause_1_3_5": _has_clause_1_3_5(row.info),
             }
         )
 
@@ -156,7 +156,7 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
         has_tse_clause = False
         if market == "TSE" and tse_latest_date is not None:
             for item in items:
-                if item["row"].date == tse_latest_date and item["has_clause_1_3"]:
+                if item["row"].date == tse_latest_date and item["has_clause_1_3_5"]:
                     has_tse_clause = True
                     break
 
@@ -164,7 +164,7 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
         if count >= 3:
             reasons.append("近六日三次注意")
         if market == "TSE" and has_tse_clause:
-            reasons.append("昨日第一到第三款")
+            reasons.append("昨日第一到第三、五款")
         
         # Check earnings records
         # Rule 1: Low Risk (Excluded) - Announced ANY earnings THIS month

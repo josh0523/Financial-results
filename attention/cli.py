@@ -95,3 +95,7 @@ def main() -> int:
     csv_path = output.write_csv(report_rows, args.output, latest_dates)
     print(f"CSV saved to {csv_path}")
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
