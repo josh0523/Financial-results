@@ -44,10 +44,20 @@ def _status_and_risk(row: AggregatedRow) -> tuple[str, str]:
         return msg, "低風險"
     elif row.is_tagged:
         # Uncertain Risk - (?) 不確定 [...]
-        msg = "(?) 不確定"
+        # Start default message
+        msg_prefix = "(?) 不確定"
+        risk_label = "不確定公布"
+
+        if row.announced_date:
+            days_diff = (date.today() - row.announced_date).days
+            if days_diff > 30:
+                msg_prefix = "(!) 可能公布"
+                risk_label = "可能公布"
+        
+        msg = msg_prefix
         if row.announced_date and row.announced_month:
             msg += f" [{row.announced_month}月自結於{format_date(row.announced_date)}公布]"
-        return msg, "不確定公布"
+        return msg, risk_label
     else:
         # High Risk - (未) 未公告 (高風險)
         return "(未) 未公告 (高風險)", "高風險"
