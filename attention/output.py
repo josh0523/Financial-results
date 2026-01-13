@@ -80,14 +80,19 @@ def _sort_key(row: AggregatedRow) -> tuple[int, date, int, str]:
     return (risk_order, sort_date, market_order.get(row.market, 99), row.code)
 
 
-def build_rows(rows: Iterable[AggregatedRow], missing: str) -> list[list[str]]:
+def build_rows(rows: Iterable[AggregatedRow], missing: str, for_excel: bool = False) -> list[list[str]]:
     data: list[list[str]] = []
     for row in sorted(rows, key=_sort_key):
         status, risk = _status_and_risk(row)
+        
+        code_val = row.code
+        if for_excel:
+            code_val = f'="{row.code}"'
+
         data.append(
             [
                 row.market,
-                row.code,
+                code_val,
                 row.name,
                 risk,
                 row.reason,
@@ -96,7 +101,6 @@ def build_rows(rows: Iterable[AggregatedRow], missing: str) -> list[list[str]]:
             ]
         )
     return data
-
 
 
 def print_table(rows: Iterable[AggregatedRow]) -> None:
@@ -117,7 +121,7 @@ def write_csv(rows: Iterable[AggregatedRow], output_path: str | None, dates: lis
     output_dir = os.path.dirname(output_path)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-    data = build_rows(rows, "")
+    data = build_rows(rows, "", for_excel=True)
     with open(output_path, "w", encoding="utf-8-sig", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(COLUMNS)

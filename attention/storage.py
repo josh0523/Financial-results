@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import List, Optional
 
-DATA_DIR = "data"
+# Use absolute path relative to this module's location
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_DIR = os.path.dirname(_MODULE_DIR)  # Go up one level from 'attention' to project root
+DATA_DIR = os.path.join(_PROJECT_DIR, "data")
 EARNINGS_FILE = os.path.join(DATA_DIR, "earnings_records.csv")
 
 @dataclass

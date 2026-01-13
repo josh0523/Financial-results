@@ -52,7 +52,7 @@ python main.py --days 10 --output /path/to/report.csv
 - CSV source encoding is Big5/CP950; HTML is UTF-8.
 - **Warrants (权证) are automatically filtered out**: Securities with 5 or more digits (e.g., 30061) are excluded from the analysis, as they do not publish self-disclosed earnings announcements.
 - Rule summary:
-  - TSE: 6-day count >= 3 (excluding 第十款) OR latest TSE date contains 第一/第二/第三款
+  - TSE: 6-day count >= 3 (excluding 第十款) OR latest TSE date contains 第一/第二/第三/第五/第六款
   - OTC: 6-day count >= 3 (excluding 第十款)
 
 ## Files
