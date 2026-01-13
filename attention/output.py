@@ -127,3 +127,29 @@ def write_csv(rows: Iterable[AggregatedRow], output_path: str | None, dates: lis
         writer.writerow(COLUMNS)
         writer.writerows(data)
     return output_path
+
+
+def print_stockwarden_table(rows: Iterable['attention.fetch.StockWardenRow']) -> None:
+    headers = ["代號", "名稱", "價格", "漲跌幅", "成交量", "狀態(自結/注意)", "公告日(推測)", "月份"]
+    data = []
+    for r in rows:
+        ann_date = r.announcement_date.strftime("%Y-%m-%d") if r.announcement_date else "-"
+        e_month = r.earnings_month if r.earnings_month else "-"
+        
+        # Truncate status text if too long
+        status = r.status_text
+        if len(status) > 40:
+            status = status[:37] + "..."
+            
+        data.append([
+            r.code,
+            r.name,
+            r.price,
+            r.change_percent,
+            r.volume,
+            status,
+            ann_date,
+            e_month
+        ])
+    
+    print(tabulate(data, headers=headers, tablefmt="github"))

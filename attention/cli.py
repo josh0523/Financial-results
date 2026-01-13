@@ -16,6 +16,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--date", type=str, default=None, help="End date for analysis (YYYY-MM-DD), default: today")
 
     parser.add_argument("--add", nargs=3, metavar=("CODE", "MONTH", "DATE"), help="Add earnings record: CODE MONTH(YYYYMM) DATE(YYYY-MM-DD)")
+    
+    # New flags
+    parser.add_argument("--weps", action="store_true", help="Show popular 'Notice Financial Results' stocks from StockWarden")
+    parser.add_argument("--update-weps", action="store_true", help="Fetch StockWarden data and auto-save TODAY's announced earnings to records.")
+
     return parser.parse_args()
 
 
@@ -37,6 +42,47 @@ def main() -> int:
         except ValueError as e:
             print(f"Error adding record: {e}", file=sys.stderr)
             return 1
+
+    if args.weps or args.update_weps:
+        print("Fetching data from StockWarden...")
+        weps_rows = fetch.fetch_stockwarden_weps()
+        if not weps_rows:
+            print("No data found or error fetching StockWarden.", file=sys.stderr)
+            return 1
+        
+        if args.weps:
+            output.print_stockwarden_table(weps_rows)
+            
+        if args.update_weps:
+            from . import storage
+            
+            # Default to today, or use --date if provided (unlikely use case but flexible)
+            target_date = datetime.today().date()
+            if args.date:
+                try:
+                    target_date = datetime.strptime(args.date, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            
+            print(f"Auto-saving records announced on: {target_date}")
+            added_count = 0
+            for row in weps_rows:
+                if row.announcement_date == target_date and row.earnings_month:
+                    # Valid candidate
+                    existing = storage.get_record(row.code, row.earnings_month)
+                    if existing:
+                        print(f"  [Skip] {row.code} {row.earnings_month} ({row.name}) - Already exists")
+                    else:
+                        storage.save_record(storage.EarningsRecord(
+                            code=row.code,
+                            earnings_month=row.earnings_month,
+                            announcement_date=row.announcement_date
+                        ))
+                        print(f"  [Add ] {row.code} {row.earnings_month} ({row.name})")
+                        added_count += 1
+            print(f"Total new records added: {added_count}")
+        
+        return 0
 
     if args.days <= 0:
         print("--days must be a positive integer", file=sys.stderr)

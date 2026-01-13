@@ -134,3 +134,115 @@ def fetch_all(end_date: date | None = None) -> FetchResult:
     rows = tse_result.rows + otc_result.rows
     warnings = tse_result.warnings + otc_result.warnings
     return FetchResult(rows=rows, warnings=warnings)
+
+
+@dataclass
+class StockWardenRow:
+    code: str
+    name: str
+    price: str
+    change_percent: str
+    volume: str
+    status_text: str
+    announcement_date: date | None
+    earnings_month: str | None  # YYYYMM
+
+
+def fetch_stockwarden_weps() -> list[StockWardenRow]:
+    url = "https://storage.googleapis.com/stockwarden-prod-public/api/boards.json"
+    rows = []
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        weps_list = data.get("data", {}).get("weps_list", [])
+        
+        today = date.today()
+        import re
+
+        for item in weps_list:
+            code = item.get("u", "")
+            name = item.get("bi", "")
+            price = str(item.get("aw", {}).get("bn", ""))
+            change = str(item.get("aw", {}).get("q", ""))
+            volume = str(item.get("aw", {}).get("cf", ""))
+            
+            # aw.bv is a list of strings like ["01/13自結 11月EPS..."]
+            bv_list = item.get("aw", {}).get("bv", [])
+            full_text = " ".join(bv_list)
+            
+            # Parse date and month
+            # Pattern: "MM/DD自結" ... "M月EPS" or "MM月EPS"
+            # Example: "01/13自結 11月EPS ▼46.67%"
+            # Regex needs to be flexible
+            ann_date = None
+            ear_month_str = None
+            
+            # Find date: MM/DD自結
+            date_match = re.search(r"(\d{1,2})/(\d{1,2})自結", full_text)
+            if date_match:
+                m_str, d_str = date_match.groups()
+                try:
+                    # Naive year assumption: start with today's year
+                    # If the date is in the future (e.g. today is Dec, parsed is Jan), it might be next year? 
+                    #Unlikely for "Self-disclosed". 
+                    # More likely: today is Jan 2026, parsed is "12/30" -> 2025.
+                    
+                    m, d = int(m_str), int(d_str)
+                    yr = today.year
+                    # Simple heuristic: if parsed month is 12 and current month is 1, it's last year
+                    if m == 12 and today.month == 1:
+                        yr -= 1
+                    
+                    ann_date = date(yr, m, d)
+                except ValueError:
+                    pass
+
+            # Find month: "X月EPS" or "XX月EPS"
+            # Usually follows the date, but regex search whole string is safer
+            month_match = re.search(r"(\d{1,2})月EPS", full_text)
+            if month_match:
+                em_str = month_match.group(1)
+                try:
+                    em = int(em_str)
+                    # Infer year for earnings month
+                    # Usually earnings month is 1-2 months behind announcement date
+                    # if announcement is Jan 2026, earnings month 11 is Nov 2025.
+                    # if announcement is Dec 2025, earnings month 10 is Oct 2025.
+                    
+                    if ann_date:
+                        base_year = ann_date.year
+                        # if ann_month is 1, and earn_month is 11 or 12 -> prev year
+                        if ann_date.month == 1 and em > 10:
+                            ey = base_year - 1
+                        else:
+                            ey = base_year
+                        ear_month_str = f"{ey}{em:02d}"
+                    else:
+                        # Fallback to today logic if no date found (unlikely but possible)
+                        base_year = today.year
+                        if today.month == 1 and em > 10:
+                            ey = base_year - 1
+                        else:
+                            ey = base_year
+                        ear_month_str = f"{ey}{em:02d}"
+
+                except ValueError:
+                    pass
+
+            rows.append(StockWardenRow(
+                code=code,
+                name=name,
+                price=price,
+                change_percent=change,
+                volume=volume,
+                status_text=full_text,
+                announcement_date=ann_date,
+                earnings_month=ear_month_str
+            ))
+
+    except Exception as e:
+        print(f"Error fetching StockWarden: {e}")
+        return []
+
+    return rows
