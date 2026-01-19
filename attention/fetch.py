@@ -161,14 +161,15 @@ def fetch_stockwarden_weps() -> list[StockWardenRow]:
         import re
 
         for item in weps_list:
-            code = item.get("u", "")
-            name = item.get("bi", "")
-            price = str(item.get("aw", {}).get("bn", ""))
-            change = str(item.get("aw", {}).get("q", ""))
-            volume = str(item.get("aw", {}).get("cf", ""))
+            code = item.get("w", "")
+            name = item.get("bl", "")
+            price = str(item.get("az", {}).get("bn", ""))
+            change = str(item.get("az", {}).get("s", ""))
+            volume = str(item.get("az", {}).get("ck", ""))
             
             # aw.bv is a list of strings like ["01/13自結 11月EPS..."]
-            bv_list = item.get("aw", {}).get("bv", [])
+            # API field changed from az.ca to ay.bx
+            bv_list = item.get("ay", {}).get("bx", [])
             full_text = " ".join(bv_list)
             
             # Parse date and month

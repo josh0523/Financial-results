@@ -14,7 +14,9 @@ from .utils import is_warrant
 
 _VOLUME_MULT_RE = re.compile(r"(?:放大|為|之)\s*([0-9]+(?:\.[0-9]+)?)\s*倍")
 _PCT_CHANGE_RE = re.compile(r"漲幅(?:達)?\s*([0-9]+(?:\.[0-9]+)?)%")
-_CLAUSE_1_3_5_6_RE = re.compile(r"第(?:一|二|三|五|六|1|2|3|5|6)款")
+_CLAUSE_1_8_RE = re.compile(r"第(?:一|二|三|四|五|六|七|八|1|2|3|4|5|6|7|8)款")
+_CLAUSE_1_7_RE = re.compile(r"第(?:一|二|三|四|五|六|七|1|2|3|4|5|6|7)款")
+_CLAUSE_9_13_RE = re.compile(r"第(?:九|十|十一|十二|十三|9|10|11|12|13)款")
 _CLAUSE_10_RE = re.compile(r"第(?:十|10)款")
 _TSE_FIRST_RE = re.compile(r"(第一款|第1款|累積收盤價漲幅)")
 
@@ -34,6 +36,7 @@ class AggregatedRow:
     uncertain_type: str | None = None  # "month-3" or "month-2"
     announced_date: date | None = None
     announced_month: str | None = None
+    has_tse_clause_9_13: bool = False  # TSE 第九-第十三項條件
 
 
 def _extract_max(pattern: re.Pattern[str], text: str) -> float | None:
@@ -44,12 +47,20 @@ def _extract_max(pattern: re.Pattern[str], text: str) -> float | None:
     return max(values) if values else None
 
 
-def _has_clause_1_3_5_6(text: str) -> bool:
-    return bool(_CLAUSE_1_3_5_6_RE.search(text or ""))
+def _has_clause_1_8(text: str) -> bool:
+    return bool(_CLAUSE_1_8_RE.search(text or ""))
 
 
 def _has_clause_10(text: str) -> bool:
     return bool(_CLAUSE_10_RE.search(text or ""))
+
+
+def _has_clause_1_7(text: str) -> bool:
+    return bool(_CLAUSE_1_7_RE.search(text or ""))
+
+
+def _has_clause_9_13(text: str) -> bool:
+    return bool(_CLAUSE_9_13_RE.search(text or ""))
 
 
 def _tse_first_clause(text: str) -> int:
@@ -93,7 +104,9 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                 "pct_change": _extract_max(_PCT_CHANGE_RE, row.info),
                 "tse_clause1": _tse_first_clause(row.info),
                 "has_clause_10": _has_clause_10(row.info),
-                "has_clause_1_3_5_6": _has_clause_1_3_5_6(row.info),
+                "has_clause_1_8": _has_clause_1_8(row.info),
+                "has_clause_1_7": _has_clause_1_7(row.info),
+                "has_clause_9_13": _has_clause_9_13(row.info),
             }
         )
 
@@ -154,18 +167,25 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                 count += 1
 
         has_tse_clause = False
+        has_tse_clause_9_13 = False
         if market == "TSE" and tse_latest_date is not None:
             for item in items:
-                if item["row"].date == tse_latest_date and item["has_clause_1_3_5_6"]:
-                    has_tse_clause = True
-                    break
+                if item["row"].date == tse_latest_date:
+                    if item["has_clause_1_8"]:
+                        has_tse_clause = True
+                    if item["has_clause_9_13"]:
+                        has_tse_clause_9_13 = True
 
         reasons: list[str] = []
         if count >= 3:
-            reasons.append("近六日三次注意")
+            if market != "TSE":
+                reasons.append("近六日三次注意")
         if market == "TSE" and has_tse_clause:
-            reasons.append("昨日第一到第三、五、六款")
+            reasons.append("昨日第一到第八款")
         
+        if not reasons:
+            continue
+
         # Check earnings records
         # Rule 1: Low Risk (Excluded) - Announced ANY earnings THIS month
         is_excluded = False
@@ -217,6 +237,14 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                         reasons.append("上月公布上上月自結")
                         break
 
+        # Rule 3: TSE with clause 9-13 -> Uncertain (not necessarily announcing)
+        # Only apply if: has 3x attention AND has clause 9-13 AND not already excluded/tagged
+        if not is_excluded and not is_tagging:
+            if market == "TSE" and count >= 3 and has_tse_clause_9_13:
+                is_tagging = True
+                uncertain_type = "tse-clause-9-13"
+                reasons.append("TSE第九至第十三項條件")
+
         if not reasons and not is_tagging: 
             continue
             
@@ -242,7 +270,8 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                 is_tagged=is_tagging,
                 uncertain_type=uncertain_type,
                 announced_date=ann_date,
-                announced_month=ann_month
+                announced_month=ann_month,
+                has_tse_clause_9_13=has_tse_clause_9_13
             )
         )
 

@@ -44,7 +44,20 @@ def save_record(record: EarningsRecord):
     _ensure_data_dir()
     file_exists = os.path.exists(EARNINGS_FILE)
     
+    # Check if file exists and doesn't end with a newline
+    needs_newline = False
+    if file_exists:
+        with open(EARNINGS_FILE, "rb") as f:
+            f.seek(0, 2)  # Go to end
+            if f.tell() > 0:
+                f.seek(-1, 2)  # Go to last byte
+                if f.read(1) != b'\n':
+                    needs_newline = True
+    
     with open(EARNINGS_FILE, mode="a", encoding="utf-8-sig", newline="") as f:
+        if needs_newline:
+            f.write('\n')
+        
         writer = csv.DictWriter(f, fieldnames=["code", "earnings_month", "announcement_date"])
         if not file_exists:
             writer.writeheader()
@@ -56,8 +69,16 @@ def save_record(record: EarningsRecord):
         })
 
 def get_record(code: str, earnings_month: str) -> Optional[EarningsRecord]:
+    # Deprecated or used for simple lookup. Returns the first match.
     records = load_records()
     for r in records:
         if r.code == code and r.earnings_month == earnings_month:
             return r
     return None
+
+def record_exists(code: str, earnings_month: str, announcement_date: date) -> bool:
+    records = load_records()
+    for r in records:
+        if r.code == code and r.earnings_month == earnings_month and r.announcement_date == announcement_date:
+            return True
+    return False

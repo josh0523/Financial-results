@@ -48,6 +48,12 @@ def _status_and_risk(row: AggregatedRow) -> tuple[str, str]:
         msg_prefix = "(?) 不確定"
         risk_label = "不確定公布"
 
+        # Check for TSE clause 9-13 first (special case)
+        if row.uncertain_type == "tse-clause-9-13":
+            msg_prefix = "(?) 不一定公布"
+            risk_label = "不一定公布"
+            return msg_prefix + " (TSE第九-第十三項)", risk_label
+        
         if row.announced_date:
             days_diff = (date.today() - row.announced_date).days
             if days_diff > 30:

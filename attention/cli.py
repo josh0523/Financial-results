@@ -69,9 +69,9 @@ def main() -> int:
             for row in weps_rows:
                 if row.announcement_date == target_date and row.earnings_month:
                     # Valid candidate
-                    existing = storage.get_record(row.code, row.earnings_month)
-                    if existing:
-                        print(f"  [Skip] {row.code} {row.earnings_month} ({row.name}) - Already exists")
+                    # Use strict check: Code + Month + Date
+                    if storage.record_exists(row.code, row.earnings_month, row.announcement_date):
+                        print(f"  [Skip] {row.code} {row.earnings_month} ({row.name}) - Already recorded today")
                     else:
                         storage.save_record(storage.EarningsRecord(
                             code=row.code,
@@ -100,8 +100,40 @@ def main() -> int:
     
     # For backward compatibility and immediate usage, I'll keep the input but make it clear it's for temporary.
     # actually, let's load from storage.
-    
+
     from . import storage
+    from datetime import timedelta
+    
+    # Auto-fetch from StockWarden and save yesterday's + today's announced earnings
+    today = datetime.today().date()
+    yesterday = today - timedelta(days=1)
+    target_dates = {yesterday, today}
+    
+    # If custom date is specified, also include that date
+    if args.date:
+        try:
+            custom_date = datetime.strptime(args.date, "%Y-%m-%d").date()
+            target_dates.add(custom_date)
+        except ValueError:
+            pass
+    
+    print("Fetching latest self-disclosed earnings from StockWarden...")
+    weps_rows = fetch.fetch_stockwarden_weps()
+    if weps_rows:
+        added_count = 0
+        for row in weps_rows:
+            if row.announcement_date in target_dates and row.earnings_month:
+                if not storage.record_exists(row.code, row.earnings_month, row.announcement_date):
+                    storage.save_record(storage.EarningsRecord(
+                        code=row.code,
+                        earnings_month=row.earnings_month,
+                        announcement_date=row.announcement_date
+                    ))
+                    print(f"  [Add] {row.code} {row.earnings_month} (announced: {row.announcement_date})")
+                    added_count += 1
+        if added_count > 0:
+            print(f"Auto-saved {added_count} new earnings records (checking {yesterday} ~ {today})")
+    
     records = storage.load_records()
     
     print(f"Loaded {len(records)} earnings records.")
@@ -140,6 +172,11 @@ def main() -> int:
     output.print_table(report_rows)
     csv_path = output.write_csv(report_rows, args.output, latest_dates)
     print(f"CSV saved to {csv_path}")
+    
+    # Upload to Google Sheets
+    from . import gsheet
+    gsheet.upload_to_gsheet(report_rows)
+    
     return 0
 
 
