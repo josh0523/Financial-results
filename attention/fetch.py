@@ -161,16 +161,42 @@ def fetch_stockwarden_weps() -> list[StockWardenRow]:
         import re
 
         for item in weps_list:
-            code = item.get("w", "")
-            name = item.get("bl", "")
+            # Stock code field: was 'w', now 'v' (fallback to both)
+            code = item.get("v", "") or item.get("w", "")
+            # Stock name field: was 'bl', now 'bk' (fallback to both)
+            name = item.get("bk", "") or item.get("bl", "")
             price = str(item.get("az", {}).get("bn", ""))
             change = str(item.get("az", {}).get("s", ""))
             volume = str(item.get("az", {}).get("ck", ""))
             
             # aw.bv is a list of strings like ["01/13自結 11月EPS..."]
-            # API field changed from az.ca to ay.bx
-            bv_list = item.get("ay", {}).get("bx", [])
-            full_text = " ".join(bv_list)
+            # API field has changed multiple times: az.ca -> ay.bx -> ay.bz
+            # Try multiple known fields and auto-detect if API changes again
+            KNOWN_FIELDS = ["bz", "bx", "bv", "ca"]  # Known field names (newest first)
+            
+            bv_list = []
+            used_field = None
+            ay_data = item.get("ay", {})
+            
+            # Try known fields first
+            for field in KNOWN_FIELDS:
+                candidate = ay_data.get(field, [])
+                if isinstance(candidate, list) and any("自結" in str(x) for x in candidate):
+                    bv_list = candidate
+                    used_field = field
+                    break
+            
+            # If no known field worked, scan all fields in 'ay' for "自結" pattern
+            if not bv_list:
+                for key, value in ay_data.items():
+                    if isinstance(value, list) and any("自結" in str(x) for x in value):
+                        bv_list = value
+                        used_field = key
+                        print(f"⚠️ StockWarden API field changed! Found '自結' data in new field: ay.{key}")
+                        print(f"   Please update KNOWN_FIELDS in fetch.py to include '{key}'")
+                        break
+            
+            full_text = " ".join(str(x) for x in bv_list)
             
             # Parse date and month
             # Pattern: "MM/DD自結" ... "M月EPS" or "MM月EPS"

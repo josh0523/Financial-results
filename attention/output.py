@@ -43,15 +43,18 @@ def _status_and_risk(row: AggregatedRow) -> tuple[str, str]:
             msg += " 已公告 (排除)"  # 回退方案（如果資料缺失）
         return msg, "低風險"
     elif row.is_tagged:
-        # Uncertain Risk - (?) 不確定 [...]
-        # Start default message
-        msg_prefix = "(?) 不確定"
-        risk_label = "不確定公布"
+        # Uncertain Risk - TSE: (-) 低機率公布, OTC: (?) 不確定公布
+        if row.market == "TSE":
+            msg_prefix = "(-) 低機率公布"
+            risk_label = "低機率公布"
+        else:
+            msg_prefix = "(?) 不確定公布"
+            risk_label = "不確定公布"
 
         # Check for TSE clause 9-13 first (special case)
         if row.uncertain_type == "tse-clause-9-13":
-            msg_prefix = "(?) 不一定公布"
-            risk_label = "不一定公布"
+            msg_prefix = "(-) 低機率公布"
+            risk_label = "低機率公布"
             return msg_prefix + " (TSE第九-第十三項)", risk_label
         
         if row.announced_date:
@@ -69,21 +72,35 @@ def _status_and_risk(row: AggregatedRow) -> tuple[str, str]:
         return "(未) 未公告 (高風險)", "高風險"
 
 
-def _sort_key(row: AggregatedRow) -> tuple[int, date, int, str]:
+def _sort_key(row: AggregatedRow) -> tuple[int, int, date, int, str]:
     # Sort order: High Risk (0) > Uncertain (1) > Low Risk (2)
+    # Within uncertain, sub-sort by status: 可能公布 (0) > 不確定公布 (1) > 低機率公布 (2)
     if row.is_excluded:
         risk_order = 2  # Low risk - bottom
+        status_order = 0
     elif row.is_tagged:
         risk_order = 1  # Uncertain - middle
+        # Determine status order within uncertain
+        if row.announced_date:
+            days_diff = (date.today() - row.announced_date).days
+            if days_diff > 30:
+                status_order = 0  # 可能公布 - top of uncertain
+            elif row.market == "OTC":
+                status_order = 1  # 不確定公布 - middle of uncertain
+            else:
+                status_order = 2  # 低機率公布 - bottom of uncertain
+        else:
+            status_order = 2  # Default to 低機率公布
     else:
         risk_order = 0  # High risk - top
+        status_order = 0
     
     # Sort by announced_date within groups (oldest first = furthest from today)
     # High risk doesn't have an announced_date, so use date.min
     sort_date = row.announced_date or date.min
     
     market_order = {"TSE": 0, "OTC": 1}
-    return (risk_order, sort_date, market_order.get(row.market, 99), row.code)
+    return (risk_order, status_order, sort_date, market_order.get(row.market, 99), row.code)
 
 
 def build_rows(rows: Iterable[AggregatedRow], missing: str, for_excel: bool = False) -> list[list[str]]:

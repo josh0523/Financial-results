@@ -193,6 +193,22 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
         ann_month = None
         
         code_records = records_by_code.get(code, [])
+        # Sort by announcement_date descending to process newest first
+        code_records = sorted(code_records, key=lambda r: r.announcement_date, reverse=True)
+        
+        # Pre-check: has this stock announced last_month earnings?
+        has_last_month_earnings = False
+        for record in code_records:
+            if record.announcement_date > ref_date:
+                continue
+            if record.earnings_month == last_month:
+                has_last_month_earnings = True
+                break
+        
+        # Initialize tagging variables
+        is_tagging = False
+        uncertain_type = None
+        
         for record in code_records:
             # IMPORTANT: Skip announcements that happened AFTER the reference date
             if record.announcement_date > ref_date:
@@ -200,19 +216,29 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                 
             # Quick check for this month without strftime
             if record.announcement_date.year == ref_date.year and record.announcement_date.month == ref_date.month:
-                # Announced this month (any earnings month) = Low Risk
-                is_excluded = True
-                ann_date = record.announcement_date
-                ann_month = record.earnings_month
-                break  # Found announcement this month
+                # For OTC: If announced month-2 (上上月) this month, AND last month earnings NOT announced yet,
+                # mark as uncertain (low probability) because OTC might still announce last month's earnings
+                if market == "OTC" and record.earnings_month == month_before_last and not has_last_month_earnings:
+                    is_tagging = True
+                    uncertain_type = "otc-month-2-this-month"
+                    ann_date = record.announcement_date
+                    ann_month = record.earnings_month
+                    reasons.append("本月公布上上月自結(上月未公布)")
+                    break
+                else:
+                    # Announced this month (any earnings month) = Low Risk
+                    is_excluded = True
+                    ann_date = record.announcement_date
+                    ann_month = record.earnings_month
+                    break  # Found announcement this month
         
         # Rule 2: Uncertain Risk - Announced in LAST month
         # Type 1: Announced month-3 earnings in last month (usually first week)
         # Type 2: Announced month-2 earnings in last month (usually after first week)
-        is_tagging = False
-        uncertain_type = None
+        # For OTC with month-2 in last month AND no last_month earnings -> also low probability
         
-        if not is_excluded:  # Only check if not already low risk
+        # Initialize if not already set from Rule 1
+        if not is_tagging:
             for record in code_records:
                 # IMPORTANT: Skip announcements that happened AFTER the reference date
                 if record.announcement_date > ref_date:
@@ -230,12 +256,22 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
                         break
                     # Check if it was month-2 earnings
                     elif record.earnings_month == month_before_last:
-                        is_tagging = True
-                        uncertain_type = "month-2"
-                        ann_date = record.announcement_date
-                        ann_month = record.earnings_month
-                        reasons.append("上月公布上上月自結")
-                        break
+                        # For OTC: If announced month-2 last month AND last month earnings NOT announced yet,
+                        # mark as low probability
+                        if market == "OTC" and not has_last_month_earnings:
+                            is_tagging = True
+                            uncertain_type = "otc-month-2-last-month"
+                            ann_date = record.announcement_date
+                            ann_month = record.earnings_month
+                            reasons.append("上月公布上上月自結(上月未公布)")
+                            break
+                        else:
+                            is_tagging = True
+                            uncertain_type = "month-2"
+                            ann_date = record.announcement_date
+                            ann_month = record.earnings_month
+                            reasons.append("上月公布上上月自結")
+                            break
 
         # Rule 3: TSE with clause 9-13 -> Uncertain (not necessarily announcing)
         # Only apply if: has 3x attention AND has clause 9-13 AND not already excluded/tagged
