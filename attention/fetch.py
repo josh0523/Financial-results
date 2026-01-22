@@ -161,39 +161,52 @@ def fetch_stockwarden_weps() -> list[StockWardenRow]:
         import re
 
         for item in weps_list:
-            # Stock code field: was 'w', now 'v' (fallback to both)
-            code = item.get("v", "") or item.get("w", "")
-            # Stock name field: was 'bl', now 'bk' (fallback to both)
-            name = item.get("bk", "") or item.get("bl", "")
+            # Stock code field: current API uses 'u', fallback to 'v' and 'w' for older versions
+            code = item.get("u", "") or item.get("v", "") or item.get("w", "")
+            # Stock name field: current API uses 'bi', fallback to 'bk' and 'bl' for older versions
+            name = item.get("bi", "") or item.get("bk", "") or item.get("bl", "")
             price = str(item.get("az", {}).get("bn", ""))
             change = str(item.get("az", {}).get("s", ""))
             volume = str(item.get("az", {}).get("ck", ""))
             
-            # aw.bv is a list of strings like ["01/13自結 11月EPS..."]
-            # API field has changed multiple times: az.ca -> ay.bx -> ay.bz
-            # Try multiple known fields and auto-detect if API changes again
-            KNOWN_FIELDS = ["bz", "bx", "bv", "ca"]  # Known field names (newest first)
+            # The self-disclosed earnings data is in 'aw.bv' as a list like ["01/13自結 11月EPS..."]
+            # API structure: item.aw.bv contains the earnings announcement strings
+            # Also check 'ay' as a fallback in case API changes
+            KNOWN_FIELDS = ["bv", "bz", "bx", "ca"]  # Known field names (bv is primary)
             
             bv_list = []
             used_field = None
-            ay_data = item.get("ay", {})
             
-            # Try known fields first
+            # Primary: check 'aw' object (current API structure)
+            aw_data = item.get("aw", {})
             for field in KNOWN_FIELDS:
-                candidate = ay_data.get(field, [])
+                candidate = aw_data.get(field, [])
                 if isinstance(candidate, list) and any("自結" in str(x) for x in candidate):
                     bv_list = candidate
-                    used_field = field
+                    used_field = f"aw.{field}"
                     break
             
-            # If no known field worked, scan all fields in 'ay' for "自結" pattern
+            # Fallback: check 'ay' object (old API structure)
             if not bv_list:
-                for key, value in ay_data.items():
-                    if isinstance(value, list) and any("自結" in str(x) for x in value):
-                        bv_list = value
-                        used_field = key
-                        print(f"⚠️ StockWarden API field changed! Found '自結' data in new field: ay.{key}")
-                        print(f"   Please update KNOWN_FIELDS in fetch.py to include '{key}'")
+                ay_data = item.get("ay", {})
+                for field in KNOWN_FIELDS:
+                    candidate = ay_data.get(field, [])
+                    if isinstance(candidate, list) and any("自結" in str(x) for x in candidate):
+                        bv_list = candidate
+                        used_field = f"ay.{field}"
+                        break
+            
+            # Last resort: scan all fields in both 'aw' and 'ay' for "自結" pattern
+            if not bv_list:
+                for parent_key, parent_data in [("aw", aw_data), ("ay", item.get("ay", {}))]:
+                    for key, value in parent_data.items():
+                        if isinstance(value, list) and any("自結" in str(x) for x in value):
+                            bv_list = value
+                            used_field = f"{parent_key}.{key}"
+                            print(f"⚠️ StockWarden API field changed! Found '自結' data in new field: {used_field}")
+                            print(f"   Please update fetch.py to include this field")
+                            break
+                    if bv_list:
                         break
             
             full_text = " ".join(str(x) for x in bv_list)
