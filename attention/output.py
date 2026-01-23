@@ -158,12 +158,12 @@ def print_stockwarden_table(rows: Iterable['attention.fetch.StockWardenRow']) ->
     for r in rows:
         ann_date = r.announcement_date.strftime("%Y-%m-%d") if r.announcement_date else "-"
         e_month = r.earnings_month if r.earnings_month else "-"
-        
+
         # Truncate status text if too long
         status = r.status_text
         if len(status) > 40:
             status = status[:37] + "..."
-            
+
         data.append([
             r.code,
             r.name,
@@ -174,5 +174,5 @@ def print_stockwarden_table(rows: Iterable['attention.fetch.StockWardenRow']) ->
             ann_date,
             e_month
         ])
-    
+
     print(tabulate(data, headers=headers, tablefmt="github"))

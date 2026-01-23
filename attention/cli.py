@@ -172,7 +172,7 @@ def main() -> int:
     output.print_table(report_rows)
     csv_path = output.write_csv(report_rows, args.output, latest_dates)
     print(f"CSV saved to {csv_path}")
-    
+
     # Upload to Google Sheets
     from . import gsheet
     gsheet.upload_to_gsheet(report_rows)
