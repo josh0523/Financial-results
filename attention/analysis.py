@@ -143,6 +143,10 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
         # Skip warrants (权证) - they don't have self-disclosed earnings announcements
         if is_warrant(code):
             continue
+        
+        # Skip Depositary Receipts (DR) - codes starting with '91'
+        if code.startswith('91'):
+            continue
             
         last_item = max(items, key=lambda item: item["row"].date)
         last_date = last_item["row"].date
@@ -193,8 +197,10 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
         ann_month = None
         
         code_records = records_by_code.get(code, [])
-        # Sort by announcement_date descending to process newest first
-        code_records = sorted(code_records, key=lambda r: r.announcement_date, reverse=True)
+        # Sort by earnings_month descending first (most recent earnings period), 
+        # then by announcement_date descending (most recent announcement within same period)
+        # This ensures that for stocks with multiple announcements, we prioritize the most recent earnings month
+        code_records = sorted(code_records, key=lambda r: (r.earnings_month, r.announcement_date), reverse=True)
         
         # Pre-check: has this stock announced last_month earnings?
         has_last_month_earnings = False
@@ -237,8 +243,8 @@ def build_report(rows: list[AttentionRow], records: list['EarningsRecord'], ref_
         # Type 2: Announced month-2 earnings in last month (usually after first week)
         # For OTC with month-2 in last month AND no last_month earnings -> also low probability
         
-        # Initialize if not already set from Rule 1
-        if not is_tagging:
+        # Only run Rule 2 if not already excluded (Rule 1) and not already tagged
+        if not is_excluded and not is_tagging:
             for record in code_records:
                 # IMPORTANT: Skip announcements that happened AFTER the reference date
                 if record.announcement_date > ref_date:

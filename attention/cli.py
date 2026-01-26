@@ -67,6 +67,9 @@ def main() -> int:
             print(f"Auto-saving records announced on: {target_date}")
             added_count = 0
             for row in weps_rows:
+                # Skip Depositary Receipts (DR) - codes starting with '91'
+                if row.code.startswith('91'):
+                    continue
                 if row.announcement_date == target_date and row.earnings_month:
                     # Valid candidate
                     # Use strict check: Code + Month + Date
@@ -122,6 +125,9 @@ def main() -> int:
     if weps_rows:
         added_count = 0
         for row in weps_rows:
+            # Skip Depositary Receipts (DR) - codes starting with '91'
+            if row.code.startswith('91'):
+                continue
             if row.announcement_date in target_dates and row.earnings_month:
                 if not storage.record_exists(row.code, row.earnings_month, row.announcement_date):
                     storage.save_record(storage.EarningsRecord(
@@ -172,6 +178,24 @@ def main() -> int:
     output.print_table(report_rows)
     csv_path = output.write_csv(report_rows, args.output, latest_dates)
     print(f"CSV saved to {csv_path}")
+
+    # Generate infographic
+    print("Generating risk warning infographic...")
+    try:
+        from generate_infographic import generate_risk_report
+        import os
+        
+        # Generate output filename based on CSV path
+        csv_dir = os.path.dirname(csv_path)
+        csv_basename = os.path.basename(csv_path)
+        # Extract date from CSV filename (e.g., attention_20260114_20260121.csv)
+        date_part = csv_basename.replace('attention_', '').replace('.csv', '')
+        infographic_path = os.path.join(csv_dir, f'risk_report_{date_part}.png')
+        
+        generate_risk_report(csv_path, infographic_path)
+        print(f"Infographic saved to {infographic_path}")
+    except Exception as e:
+        print(f"Warning: Failed to generate infographic: {e}", file=sys.stderr)
 
     # Upload to Google Sheets
     from . import gsheet
