@@ -105,21 +105,8 @@ def main() -> int:
     # actually, let's load from storage.
 
     from . import storage
-    from datetime import timedelta
-    
-    # Auto-fetch from StockWarden and save yesterday's + today's announced earnings
-    today = datetime.today().date()
-    yesterday = today - timedelta(days=1)
-    target_dates = {yesterday, today}
-    
-    # If custom date is specified, also include that date
-    if args.date:
-        try:
-            custom_date = datetime.strptime(args.date, "%Y-%m-%d").date()
-            target_dates.add(custom_date)
-        except ValueError:
-            pass
-    
+
+    # Auto-fetch from StockWarden and save ALL announced earnings (no date filter)
     print("Fetching latest self-disclosed earnings from StockWarden...")
     weps_rows = fetch.fetch_stockwarden_weps()
     if weps_rows:
@@ -128,7 +115,7 @@ def main() -> int:
             # Skip Depositary Receipts (DR) - codes starting with '91'
             if row.code.startswith('91'):
                 continue
-            if row.announcement_date in target_dates and row.earnings_month:
+            if row.announcement_date and row.earnings_month:
                 if not storage.record_exists(row.code, row.earnings_month, row.announcement_date):
                     storage.save_record(storage.EarningsRecord(
                         code=row.code,
@@ -138,7 +125,7 @@ def main() -> int:
                     print(f"  [Add] {row.code} {row.earnings_month} (announced: {row.announcement_date})")
                     added_count += 1
         if added_count > 0:
-            print(f"Auto-saved {added_count} new earnings records (checking {yesterday} ~ {today})")
+            print(f"Auto-saved {added_count} new earnings records")
     
     records = storage.load_records()
     
